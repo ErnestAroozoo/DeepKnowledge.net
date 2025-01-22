@@ -13,7 +13,7 @@ from vector_search import *
 # Section: Page Config
 # ==========================================================
 st.set_page_config(
-    page_title="DocumentGPT - Your intelligent Q&A AI",
+    page_title="Knowledge Base GPT - Your intelligent Q&A AI",
     page_icon="./assets/favicon.ico",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -102,7 +102,7 @@ st.markdown("""
             }
             </style>
             <div class="footer">
-            <p>Made by <a href='https://github.com/ErnestAroozoo' target='_blank'>Ernest Aroozoo</a> | <a href='https://github.com/ErnestAroozoo/MemeStocks.net' target='_blank'>View on GitHub</a></p>
+            <p>Made by <a href='https://github.com/ErnestAroozoo' target='_blank'>Ernest Aroozoo</a> | <a href='https://github.com/ErnestAroozoo/Knowledge-Base-GPT' target='_blank'>View on GitHub</a></p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -134,7 +134,7 @@ custom_title = """
                 </style>
                 <div class="custom-title">
                     <img src="data:image/png;base64,{logo}" alt="Logo">
-                    <h2>DocumentGPT</h2>
+                    <h2>Knowledge Base GPT</h2>
                 </div>
                 """
 logo_base64 = image_to_base64('./assets/logo.png')
@@ -158,45 +158,57 @@ def is_valid_url(url):
     )
     return re.match(regex, url) is not None
 
-# Knowledgebase
-st.subheader("Knowledgebase")
-with st.container(height=360):
+# Knowledge Base
+st.write("") # Empty padding
+with st.expander("Knowledge Base", expanded=True):
     col1, col2 = st.columns(2)
 
     # Add Data
     with col1:
-        # Add Data
         st.subheader("Add Data")
 
         # Define default URLs in session state
         if "urls" not in st.session_state:
             st.session_state.urls = [
-                "https://finalfantasy.fandom.com/wiki/Minfilia_Warde", 
-                "https://finalfantasy.fandom.com/wiki/Warrior_of_Light_(Final_Fantasy_XIV)"
+                "https://www.apple.com/newsroom/2024/02/apple-reports-first-quarter-results/",
+                "https://www.apple.com/newsroom/2024/05/apple-reports-second-quarter-results/",
+                "https://www.apple.com/newsroom/2024/08/apple-reports-third-quarter-results/", 
+                "https://www.apple.com/newsroom/2024/10/apple-reports-fourth-quarter-results/"
             ]
 
         # Input for website URL
-        website_url = st.text_input("Website URL", "https://finalfantasy.fandom.com/wiki/Minfilia_Warde")
+        website_url = st.text_input(label="Website URL", placeholder="Type a valid website URL here (e.g. https://website.com)")
 
         # Button to add a URL
-        if st.button("Add URLs"):
+        if website_url != "":
+            # Case 1: URL is valid according to regex
             if is_valid_url(website_url):
+                # Case 1a: URL is not in list
                 if website_url not in st.session_state.urls:
+                    # Add URL to list
                     st.session_state.urls.append(website_url)
+                    # Create new vector embeddings and vector store using the updated list
+                    st.session_state.documents = load_web_data(st.session_state.urls)
+                    st.session_state.index = create_vector_store(st.session_state.documents)
+                    # Display success message
                     st.success("URL added successfully!")
+                # Case 1b: URL is already in list
                 else:
+                    # Display warning message
                     st.warning("This URL is already in the list.")
+            # Case2: URL is not valid according to regex
             else:
+                # Display error message
                 st.error("Invalid URL. Please enter a valid website link.")
 
         st.write("") # Empty padding
 
         # File uploader
-        uploaded_file = st.file_uploader("Documents", disabled=True)
+        uploaded_file = st.file_uploader("Document", disabled=True)
 
-    # Vector Store
+    # Data Source
     with col2:
-        st.subheader("Vector Store")
+        st.subheader("Data Source")
         # Create the DataFrame
         data = {
             "Type": ["Website"] * len(st.session_state.urls),
@@ -205,7 +217,7 @@ with st.container(height=360):
         vector_store_df = pd.DataFrame(data)
 
         # Display the DataFrame
-        st.dataframe(vector_store_df, hide_index=True)
+        st.dataframe(vector_store_df, hide_index=True, use_container_width=True)
 
 # Load URLs
 if "documents" not in st.session_state:
@@ -219,11 +231,11 @@ if "index" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
     # Initial assistant message
-    initial_message = "Hello! I'm your AI assistant, specialized in answering questions using only the documents you have uploaded to the vector store."
+    initial_message = "Hi! I'm your AI assistant, ready to help answer your questions using the resources you've added to the knowledge base. Ask me anything, and I'll provide accurate, relevant answers based on the information available!"
     st.session_state.messages.append(ChatMessage(role="assistant", content=initial_message))
 
 st.subheader("Chat")
-with st.container(height=500):
+with st.container(height=515, border=False):
     col1, col2 = st.columns(2)
     # Chatbox
     with col1:
@@ -262,21 +274,48 @@ with st.container(height=500):
 
     # Document Sources Table
     with col2:
-        with st.container(height=450, border=False):
-            st.subheader("Sources")
-            # Display the sources if available
-            if 'sources' in st.session_state:
-                if st.session_state.sources == "":
-                    st.markdown("No relevant documents found.")
-                else:
-                    # Create a DataFrame from the sources dict object
-                    sources_df = pd.DataFrame(st.session_state.sources)
-                    sources_df = sources_df.rename(columns={
-                        'score': 'Relevance',
-                        'url': 'URL',
-                        'text': 'Text'
-                    })
-                    # Display DataFrame
-                    st.dataframe(sources_df, hide_index=True)
+        # Display the sources if available
+        if 'sources' in st.session_state:
+            if len(st.session_state.sources) == 0:
+                st.warning("No relevant documents or websites found in knowledge base.", icon=":material/warning:")
             else:
-                st.markdown("Relevant documents will appear here once you start asking questions.")
+                # Create a DataFrame from the sources dict object
+                sources_df = pd.DataFrame(st.session_state.sources)
+                sources_df = sources_df.rename(columns={
+                    'score': 'Relevance',
+                    'url': 'URL',
+                    'text': 'Text'
+                })
+                # Display DataFrame
+                st.dataframe(sources_df, hide_index=True, use_container_width=True)
+        else:
+            st.info("Relevant documents or websites from the knowledge base will appear here once you start asking questions.", icon=":material/info:")
+
+# ==========================================================
+# Section: CSS Footer
+# ==========================================================
+# Footer
+st.markdown("""
+            <style>
+            .footer {
+                position: fixed;
+                left: 0;
+                bottom: 0;
+                width: 100%;
+                background-color: #232323;
+                color: #FFFFFF;
+                text-align: center;
+                padding: 0px 0;
+                font-size: 15px;
+                height: 35px;
+                line-height: 30px;
+            }
+            .footer a {
+                color: #6464ef;
+                text-decoration: none;
+            }
+            </style>
+            <div class="footer">
+            <p>Made by <a href='https://github.com/ErnestAroozoo' target='_blank'>Ernest Aroozoo</a> | <a href='https://github.com/ErnestAroozoo/Knowledge-Base-GPT' target='_blank'>View on GitHub</a></p>
+            </div>
+            """, unsafe_allow_html=True)

@@ -19,7 +19,7 @@ OPENAI_API_BASE = os.getenv('OPENAI_API_HOST')
 
 # Vector Embedding Parameters
 SIMILARITY_TOP_K = 5
-SIMILARITY_CUTOFF = 0.7
+SIMILARITY_CUTOFF = 0.75
 Settings.embed_model = OpenAIEmbedding(
     model="text-embedding-ada-002",
     api_key=OPENAI_API_KEY,
@@ -101,18 +101,19 @@ def chat_response(user_question, chat_memory, index):
 
     # Construct system prompt
     system_prompt = f"""
-    You are a knowledgeable assistant specializing in Q&A. Your role is to provide accurate and precise answers based solely on the information from the provided websites. Do not fabricate information, and only answer questions with evidence from the websites.
+    You are a knowledgeable assistant specializing in Q&A. Your primary role is to provide accurate and precise answers strictly based on the information from the provided documents or websites. Do not fabricate information or make assumptions. Respond only with evidence from the Contextual Sources.
 
     Contextual Sources:
     {json_internal_sources}
 
     Instructions:
-    - Prioritize accuracy, relevance, and clarity in your responses.
-    - If the provided documents do not contain sufficient information to answer a question, clearly state that the information is insufficient and suggest consulting additional resources.
-    - Ensure that all responses adhere strictly to the context and details of the sourced documents.
-    - If multiple sources provide conflicting information, highlight these discrepancies and suggest further review.
+    - Provide answers that are accurate, relevant, and easy to understand.
+    - Do not speculate or provide information beyond what is included in the Contextual Sources.
+    - If the provided documents do not contain sufficient information to answer a question, clearly state this and recommend consulting additional resources.
+    - Highlight any conflicting information found across sources and suggest further review if necessary.
+    - Ensure all responses are formatted in markdown for compatibility.
 
-    Please proceed with your response based on the documents provided.
+    Please proceed with your response based solely on the provided documents or websites.
     """
     messages = [ChatMessage(role="system", content=system_prompt)]
 
@@ -131,14 +132,21 @@ def chat_response(user_question, chat_memory, index):
 
 if __name__ == "__main__":
     # List of web urls
-    urls = ["https://finalfantasy.fandom.com/wiki/Minfilia_Warde", "https://finalfantasy.fandom.com/wiki/Warrior_of_Light_(Final_Fantasy_XIV)"]
+    urls = [
+                "https://www.apple.com/newsroom/2024/02/apple-reports-first-quarter-results/",
+                "https://www.apple.com/newsroom/2024/05/apple-reports-second-quarter-results/",
+                "https://www.apple.com/newsroom/2024/08/apple-reports-third-quarter-results/", 
+                "https://www.apple.com/newsroom/2024/10/apple-reports-fourth-quarter-results/"
+            ]
+    
+    # Load urls
     documents = load_web_data(urls)
 
     # Create vector store index
     index = create_vector_store(documents)
 
     # Start a chat session
-    starting_message = "Hello, I can answer any questions you have based on the websites you have provided and will cite the url in our conversation."
+    starting_message = "Hi! I'm your AI assistant, ready to help answer your questions using the resources you've added to the knowledge base. Ask me anything, and I'll provide accurate, relevant answers based on the information available!"
     chat_memory = [ChatMessage(role="assistant", content=starting_message)]
     while True:
         user_question = input("You: ")
