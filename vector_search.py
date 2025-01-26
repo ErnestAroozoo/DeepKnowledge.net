@@ -33,6 +33,7 @@ Settings.embed_model = OpenAIEmbedding(
 # Chat Response Parameters
 llm = DeepSeek(
     model="deepseek-chat",
+    temperature=0.5,
     api_key=DEEPSEEK_API_KEY,
     api_base=DEEPSEEK_API_BASE
 )
@@ -82,11 +83,11 @@ def query_vector_store(index, query):
     for doc in documents:
         # Extract source URL from node relationships
         source_relation = doc.node.relationships.get(NodeRelationship.SOURCE)
-        url = source_relation.node_id if source_relation else "N/A"
+        source = source_relation.node_id if source_relation else "N/A"
         
         output.append({
             'score': doc.score,
-            'url': url,
+            'source': source,
             'text': doc.node.text
         })
 

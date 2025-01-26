@@ -237,7 +237,7 @@ with st.expander("Knowledge Base", expanded=True):
         # Create DataFrame from index data
         vector_store_df = pd.DataFrame({
             "Type": ["Website"] * len(index_urls),
-            "Description": index_urls
+            "Source": index_urls
         })
 
         # Display the DataFrame
@@ -293,7 +293,7 @@ with st.container(height=515, border=False):
                 sources_df = pd.DataFrame(st.session_state.sources)
                 sources_df = sources_df.rename(columns={
                     'score': 'Relevance',
-                    'url': 'URL',
+                    'source': 'Source',
                     'text': 'Text'
                 })
                 # Display DataFrame
