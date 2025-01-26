@@ -25,7 +25,7 @@ DEEPSEEK_API_BASE = os.getenv('DEEPSEEK_API_HOST')
 SIMILARITY_TOP_K = 5
 SIMILARITY_CUTOFF = 0.75
 Settings.embed_model = OpenAIEmbedding(
-    model="text-embedding-ada-002",
+    model="text-embedding-3-small",
     api_key=OPENAI_API_KEY,
     api_base=OPENAI_API_BASE
 )
