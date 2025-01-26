@@ -191,12 +191,12 @@ if "messages" not in st.session_state:
 
 # Knowledge Base
 st.write("") # Empty padding
-with st.expander("Knowledge Base", expanded=True):
+with st.expander(":material/database: Knowledge Base", expanded=True):
     col1, col2 = st.columns(2)
 
     # Add Data
     with col1:
-        st.subheader("Add Data")
+        st.subheader(":material/library_add: Add Data")
 
         # Add Data (Website URL)
         website_url = st.text_input(label="Website URL", placeholder="Type a valid website URL here (e.g. https://website.com)")
@@ -230,7 +230,7 @@ with st.expander("Knowledge Base", expanded=True):
 
     # Data Source
     with col2:
-        st.subheader("Knowledge Base")
+        st.subheader(":material/database: Knowledge Base")
         # Get URLs directly from index
         index_urls = get_urls_from_index(st.session_state.index)
         
@@ -247,7 +247,7 @@ with st.container(height=515, border=False):
     col1, col2 = st.columns(2)
     # Chatbox
     with col1:
-        st.subheader("Chat")
+        st.subheader(":material/forum: Chat")
         # Create a placeholder container that holds all the messages
         messages_placeholder = st.container(height=393, border=False)
         
@@ -283,7 +283,7 @@ with st.container(height=515, border=False):
 
     # Document Sources Table
     with col2:
-        st.subheader("Relevant Sources")
+        st.subheader(":material/fact_check: Relevant Sources")
         # Display the sources if available
         if 'sources' in st.session_state:
             if len(st.session_state.sources) == 0:
