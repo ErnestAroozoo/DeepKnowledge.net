@@ -6,8 +6,10 @@ from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
+from llama_index.llms.deepseek import DeepSeek
 from llama_index.core import Settings
 from llama_index.readers.web import SimpleWebPageReader
+from llama_index.core.schema import NodeRelationship
 from dotenv import load_dotenv
 import os
 import json
@@ -16,6 +18,8 @@ import json
 load_dotenv()
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 OPENAI_API_BASE = os.getenv('OPENAI_API_HOST')
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+DEEPSEEK_API_BASE = os.getenv('DEEPSEEK_API_HOST')
 
 # Vector Embedding Parameters
 SIMILARITY_TOP_K = 5
@@ -27,10 +31,10 @@ Settings.embed_model = OpenAIEmbedding(
 )
 
 # Chat Response Parameters
-llm = OpenAI(
-    model="gpt-4o",
-    api_key=OPENAI_API_KEY,
-    api_base=OPENAI_API_BASE
+llm = DeepSeek(
+    model="deepseek-chat",
+    api_key=DEEPSEEK_API_KEY,
+    api_base=DEEPSEEK_API_BASE
 )
 
 def load_document_data(documents_directory):
@@ -74,14 +78,17 @@ def query_vector_store(index, query):
     documents = query_engine.retrieve(query)
 
     # Format the output into a dictionary
-    output = [
-        {
+    output = []
+    for doc in documents:
+        # Extract source URL from node relationships
+        source_relation = doc.node.relationships.get(NodeRelationship.SOURCE)
+        url = source_relation.node_id if source_relation else "N/A"
+        
+        output.append({
             'score': doc.score,
-            'url': doc.node.id_,
+            'url': url,
             'text': doc.node.text
-        }
-        for doc in documents
-    ]
+        })
 
     return output
 
@@ -94,26 +101,27 @@ def chat_response(user_question, chat_memory, index):
 
     # Case 1: There are relevant results in vector store
     if results:
-        json_internal_sources = json.dumps(results, indent=2) # Convert Python dict to JSON string
+        json_internal_sources = json.dumps(results, indent=4) # Convert Python dict to JSON string
     # Case 2: No relevant results in vector store
     else:
         json_internal_sources = "No relevant information found using internal data sources."
 
     # Construct system prompt
     system_prompt = f"""
-    You are a knowledgeable assistant specializing in Q&A. Your primary role is to provide accurate and precise answers strictly based on the information from the provided documents or websites. Do not fabricate information or make assumptions. Respond only with evidence from the Contextual Sources.
+    You are a knowledgeable assistant specializing in Q&A. Your primary role is to provide accurate and precise answers strictly based on the information from the provided documents or websites. Do not fabricate information or make assumptions. Respond only with evidence from the Knowledge Base.
 
-    Contextual Sources:
+    Knowledge Base (JSON):
     {json_internal_sources}
 
     Instructions:
     - Provide answers that are accurate, relevant, and easy to understand.
-    - Do not speculate or provide information beyond what is included in the Contextual Sources.
-    - If the provided documents do not contain sufficient information to answer a question, clearly state this and recommend consulting additional resources.
+    - Do not speculate or provide information beyond what is included in the Knowledge Base.
+    - If the provided documents or websites do not contain sufficient information to answer a question, clearly state this and recommend consulting additional resources.
     - Highlight any conflicting information found across sources and suggest further review if necessary.
     - Ensure all responses are formatted in markdown for compatibility.
+    - Ensure to properly cite all the relevant sources used in generating your responses.
 
-    Please proceed with your response based solely on the provided documents or websites.
+    Please proceed with your response based solely on the provided documents or websites from the Knowledge Base.
     """
     messages = [ChatMessage(role="system", content=system_prompt)]
 

@@ -6,6 +6,7 @@ from PIL import Image
 import base64
 import io
 from llama_index.core.llms import ChatMessage, MessageRole
+from llama_index.core.schema import NodeRelationship
 import re
 from vector_search import *
 
@@ -13,7 +14,7 @@ from vector_search import *
 # Section: Page Config
 # ==========================================================
 st.set_page_config(
-    page_title="Knowledge Base GPT - Your intelligent Q&A AI",
+    page_title="DeepKnowledge.net - Your intelligent Q&A AI",
     page_icon="./assets/favicon.ico",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -102,7 +103,7 @@ st.markdown("""
             }
             </style>
             <div class="footer">
-            <p>Made by <a href='https://github.com/ErnestAroozoo' target='_blank'>Ernest Aroozoo</a> | <a href='https://github.com/ErnestAroozoo/Knowledge-Base-GPT' target='_blank'>View on GitHub</a></p>
+            <p>Made by <a href='https://github.com/ErnestAroozoo' target='_blank'>Ernest Aroozoo</a> | <a href='https://github.com/ErnestAroozoo/DeepKnowledge.net' target='_blank'>View on GitHub</a></p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -134,7 +135,7 @@ custom_title = """
                 </style>
                 <div class="custom-title">
                     <img src="data:image/png;base64,{logo}" alt="Logo">
-                    <h2>Knowledge Base GPT</h2>
+                    <h2>DeepKnowledge.net</h2>
                 </div>
                 """
 logo_base64 = image_to_base64('./assets/logo.png')
@@ -158,73 +159,27 @@ def is_valid_url(url):
     )
     return re.match(regex, url) is not None
 
-# Knowledge Base
-st.write("") # Empty padding
-with st.expander("Knowledge Base", expanded=True):
-    col1, col2 = st.columns(2)
+def get_urls_from_index(index):
+    """
+    Helper function to extract unique source URLs from vector store index
+    """
+    urls = set()
+    for node_id in index.docstore.docs.keys():
+        node = index.docstore.get_node(node_id)
+        source_relation = node.relationships.get(NodeRelationship.SOURCE)
+        if source_relation and source_relation.node_id:
+            urls.add(source_relation.node_id)
+    return sorted(urls)
 
-    # Add Data
-    with col1:
-        st.subheader("Add Data")
-
-        # Define default URLs in session state
-        if "urls" not in st.session_state:
-            st.session_state.urls = [
-                "https://www.apple.com/newsroom/2024/02/apple-reports-first-quarter-results/",
-                "https://www.apple.com/newsroom/2024/05/apple-reports-second-quarter-results/",
-                "https://www.apple.com/newsroom/2024/08/apple-reports-third-quarter-results/", 
-                "https://www.apple.com/newsroom/2024/10/apple-reports-fourth-quarter-results/"
-            ]
-
-        # Input for website URL
-        website_url = st.text_input(label="Website URL", placeholder="Type a valid website URL here (e.g. https://website.com)")
-
-        # Button to add a URL
-        if website_url != "":
-            # Case 1: URL is valid according to regex
-            if is_valid_url(website_url):
-                # Case 1a: URL is not in list
-                if website_url not in st.session_state.urls:
-                    # Add URL to list
-                    st.session_state.urls.append(website_url)
-                    # Create new vector embeddings and vector store using the updated list
-                    st.session_state.documents = load_web_data(st.session_state.urls)
-                    st.session_state.index = create_vector_store(st.session_state.documents)
-                    # Display success message
-                    st.success("URL added successfully!")
-                # Case 1b: URL is already in list
-                else:
-                    # Display warning message
-                    st.warning("This URL is already in the list.")
-            # Case2: URL is not valid according to regex
-            else:
-                # Display error message
-                st.error("Invalid URL. Please enter a valid website link.")
-
-        st.write("") # Empty padding
-
-        # File uploader
-        uploaded_file = st.file_uploader("Document", disabled=True)
-
-    # Data Source
-    with col2:
-        st.subheader("Data Source")
-        # Create the DataFrame
-        data = {
-            "Type": ["Website"] * len(st.session_state.urls),
-            "Description": st.session_state.urls,
-        }
-        vector_store_df = pd.DataFrame(data)
-
-        # Display the DataFrame
-        st.dataframe(vector_store_df, hide_index=True, use_container_width=True)
-
-# Load URLs
-if "documents" not in st.session_state:
-    st.session_state.documents = load_web_data(st.session_state.urls)
-
-# Create in-memory vector store
+# Define default URLs in session state
 if "index" not in st.session_state:
+    default_urls = [
+        "https://www.apple.com/newsroom/2024/02/apple-reports-first-quarter-results/",
+        "https://www.apple.com/newsroom/2024/05/apple-reports-second-quarter-results/",
+        "https://www.apple.com/newsroom/2024/08/apple-reports-third-quarter-results/", 
+        "https://www.apple.com/newsroom/2024/10/apple-reports-fourth-quarter-results/"
+    ]
+    st.session_state.documents = load_web_data(default_urls)
     st.session_state.index = create_vector_store(st.session_state.documents)
 
 # Initialize chat history
@@ -234,11 +189,65 @@ if "messages" not in st.session_state:
     initial_message = "Hi! I'm your AI assistant, ready to help answer your questions using the resources you've added to the knowledge base. Ask me anything, and I'll provide accurate, relevant answers based on the information available!"
     st.session_state.messages.append(ChatMessage(role="assistant", content=initial_message))
 
-st.subheader("Chat")
+# Knowledge Base
+st.write("") # Empty padding
+with st.expander("Knowledge Base", expanded=True):
+    col1, col2 = st.columns(2)
+
+    # Add Data
+    with col1:
+        st.subheader("Add Data")
+
+        # Add Data (Website URL)
+        website_url = st.text_input(label="Website URL", placeholder="Type a valid website URL here (e.g. https://website.com)")
+
+        # Check if there is text input for website_url
+        if website_url:
+            # Case 1: URL is valid
+            if is_valid_url(website_url):
+                # Get current URLs from index
+                current_urls = get_urls_from_index(st.session_state.index)
+                # Case 1a: URL is not in index
+                if website_url not in current_urls:
+                    # Create new combined URL list
+                    new_urls = current_urls + [website_url]
+                    
+                    # Reload with updated URLs and recreate index
+                    st.session_state.documents = load_web_data(new_urls)
+                    st.session_state.index = create_vector_store(st.session_state.documents)
+                    st.success("URL added successfully!")
+                # Case 1b: URL already in index
+                else:
+                    st.warning("This URL is already in the knowledge base")
+            # Case 2: URL is not valid
+            else:
+                st.error("Invalid URL. Please enter a valid website link.")
+
+        st.write("") # Empty padding
+
+        # Add Data (Document)
+        uploaded_file = st.file_uploader("Document", type=["pdf", "docx"], disabled=True)
+
+    # Data Source
+    with col2:
+        st.subheader("Knowledge Base")
+        # Get URLs directly from index
+        index_urls = get_urls_from_index(st.session_state.index)
+        
+        # Create DataFrame from index data
+        vector_store_df = pd.DataFrame({
+            "Type": ["Website"] * len(index_urls),
+            "Description": index_urls
+        })
+
+        # Display the DataFrame
+        st.dataframe(vector_store_df, hide_index=True, use_container_width=True)
+
 with st.container(height=515, border=False):
     col1, col2 = st.columns(2)
     # Chatbox
     with col1:
+        st.subheader("Chat")
         # Create a placeholder container that holds all the messages
         messages_placeholder = st.container(height=393, border=False)
         
@@ -274,6 +283,7 @@ with st.container(height=515, border=False):
 
     # Document Sources Table
     with col2:
+        st.subheader("Relevant Sources")
         # Display the sources if available
         if 'sources' in st.session_state:
             if len(st.session_state.sources) == 0:
@@ -316,6 +326,6 @@ st.markdown("""
             }
             </style>
             <div class="footer">
-            <p>Made by <a href='https://github.com/ErnestAroozoo' target='_blank'>Ernest Aroozoo</a> | <a href='https://github.com/ErnestAroozoo/Knowledge-Base-GPT' target='_blank'>View on GitHub</a></p>
+            <p>Made by <a href='https://github.com/ErnestAroozoo' target='_blank'>Ernest Aroozoo</a> | <a href='https://github.com/ErnestAroozoo/DeepKnowledge.net' target='_blank'>View on GitHub</a></p>
             </div>
             """, unsafe_allow_html=True)
