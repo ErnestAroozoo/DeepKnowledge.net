@@ -215,15 +215,6 @@ def get_file_names_from_index(index):
             file_names.add(node.metadata['file_name'])
     return sorted(file_names)
 
-def clear_url_input():
-    """
-    Helper function to clear user input
-    """
-    # Store submitted URL before clearing
-    st.session_state.submitted_url = st.session_state.website_input
-    # Clear the text input widget
-    st.session_state.website_input = ""
-
 # Initialize default URLs to be added to vector store
 if "index" not in st.session_state:
     default_urls = [
@@ -239,16 +230,8 @@ if "index" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
     # Initial assistant message
-    initial_message = "Hi! I'm your AI assistant, ready to help answer your questions using the resources you've added to the knowledge base. Ask me anything, and I'll provide accurate, relevant answers based on the information available!"
+    initial_message = "Hi! I'm your AI assistant, ready to help answer your questions using the documents or websites you've added to the knowledge base. Ask me anything, and I'll provide accurate, relevant answers based on the information available!"
     st.session_state.messages.append(ChatMessage(role="assistant", content=initial_message))
-
-# Initialize submitted url
-if 'submitted_url' not in st.session_state:
-    st.session_state.submitted_url = None
-
-# Initialize website input
-if 'website_input' not in st.session_state:
-    st.session_state.website_input = ""
 
 @st.fragment()
 def knowledge_base_layout():
@@ -265,18 +248,15 @@ def knowledge_base_layout():
             st.subheader(":material/library_add: Add Data")
 
             # Website URL Input
-            st.text_input(
-                label="Website URL",
-                placeholder="Type a website URL and then press enter (e.g. https://website.com)",
-                key="website_input",
-                on_change=clear_url_input
-            )
+            with st.form("url_form", clear_on_submit=True, border=False):
+                website_url = st.text_input(
+                    label="Website",
+                    placeholder="Type a website URL here (e.g. https://website.com)"
+                )
+                submitted_url = st.form_submit_button(":material/upload: Add website")
 
             # Process submitted URL
-            if st.session_state.submitted_url:
-                website_url = st.session_state.submitted_url
-                st.session_state.submitted_url = None  # Reset immediately after retrieval
-
+            if submitted_url and len(website_url) > 0:
                 # Check if URL is valid using regex
                 if is_valid_url(website_url):
                     # Get EXISTING website URLs only
@@ -294,27 +274,27 @@ def knowledge_base_layout():
                             st.session_state.documents = updated_documents
                             st.session_state.index = create_vector_store(updated_documents)
                             
-                            st.success("Added 1 URL to the knowledge base.", icon=":material/task_alt:")
+                            st.success("Added 1 website to the knowledge base.", icon=":material/task_alt:")
                         except Exception as e:
-                            st.error(f"Error loading website. {e}", icon=":material/error:")
+                            st.error(f"Error loading website.", icon=":material/error:")
                     else:
-                        st.warning("URL already exists in the knowledge base.", icon=":material/warning:")
+                        st.warning("Website already exists in the knowledge base.", icon=":material/warning:")
                 else:
                     st.error("Invalid URL. Please enter a valid website link.", icon=":material/error:")
 
             st.write("")  # Empty padding
 
             # Document Uploader
-            with st.form("my-form", clear_on_submit=True, border=False):
+            with st.form("document_form", clear_on_submit=True, border=False):
                 uploaded_files = st.file_uploader(
                     "Document", 
                     type=["pdf", "docx"],
                     accept_multiple_files=True
                 )
-                submitted = st.form_submit_button(":material/upload: Upload files")
+                submitted_file = st.form_submit_button(":material/upload: Add files")
 
             # Process uploaded document
-            if submitted and len(uploaded_files) > 0:
+            if submitted_file and len(uploaded_files) > 0:
                 try:
                     # Get existing DOCUMENT sources only
                     existing_files = get_file_names_from_index(st.session_state.index)
@@ -345,7 +325,7 @@ def knowledge_base_layout():
                     else:
                         st.warning("Files already exist in knowledge base.", icon=":material/warning:")
                 except Exception as e:
-                    st.error(f"Error processing files. {str(e)}", icon=":material/error:")
+                    st.error(f"Error processing files.", icon=":material/error:")
 
         # Data Source Display
         with col2:
