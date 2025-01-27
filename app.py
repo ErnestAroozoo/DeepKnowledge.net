@@ -171,6 +171,15 @@ def get_urls_from_index(index):
             urls.add(source_relation.node_id)
     return sorted(urls)
 
+def clear_url_input():
+    """
+    Helper function to clear user input
+    """
+    # Store submitted URL before clearing
+    st.session_state.submitted_url = st.session_state.website_input
+    # Clear the text input widget
+    st.session_state.website_input = ""
+
 # Define default URLs in session state
 if "index" not in st.session_state:
     default_urls = [
@@ -189,117 +198,142 @@ if "messages" not in st.session_state:
     initial_message = "Hi! I'm your AI assistant, ready to help answer your questions using the resources you've added to the knowledge base. Ask me anything, and I'll provide accurate, relevant answers based on the information available!"
     st.session_state.messages.append(ChatMessage(role="assistant", content=initial_message))
 
-# Knowledge Base
-st.write("") # Empty padding
-with st.expander(":material/database: Knowledge Base", expanded=True):
-    col1, col2 = st.columns(2)
+# Initialize website url input
+    if 'submitted_url' not in st.session_state:
+        st.session_state.submitted_url = None
+    if 'website_input' not in st.session_state:
+        st.session_state.website_input = ""
 
-    # Add Data
-    with col1:
-        st.subheader(":material/library_add: Add Data")
+@st.fragment()
+def knowledge_base_layout():
+    """
+    Fragmented UI component for Knowledge Base
+    """
+    st.write("") # Empty padding
+    with st.expander(":material/database: Knowledge Base", expanded=True):
+        col1, col2 = st.columns(2)
 
-        # Add Data (Website URL)
-        website_url = st.text_input(label="Website URL", placeholder="Type a valid website URL here (e.g. https://website.com)")
+        # Add Data
+        with col1:
+            st.subheader(":material/library_add: Add Data")
 
-        # Check if there is text input for website_url
-        if website_url:
-            # Case 1: URL is valid
-            if is_valid_url(website_url):
-                # Get current URLs from index
-                current_urls = get_urls_from_index(st.session_state.index)
-                # Case 1a: URL is not in index
-                if website_url not in current_urls:
-                    # Create new combined URL list
-                    new_urls = current_urls + [website_url]
-                    
-                    # Reload with updated URLs and recreate index
-                    st.session_state.documents = load_web_data(new_urls)
-                    st.session_state.index = create_vector_store(st.session_state.documents)
-                    st.success("URL added successfully!")
-                # Case 1b: URL already in index
+            # Add Data (Website URL)
+            st.text_input(
+                label="Website URL",
+                placeholder="Type a website URL and then press enter (e.g. https://website.com)",
+                key="website_input",
+                on_change=clear_url_input
+            )
+
+            # Process submitted URL if exists
+            if st.session_state.submitted_url:
+                website_url = st.session_state.submitted_url
+                # Reset submitted URL immediately to prevent reprocessing
+                st.session_state.submitted_url = None
+
+                # Original validation and processing logic
+                if is_valid_url(website_url):
+                    current_urls = get_urls_from_index(st.session_state.index)
+                    if website_url not in current_urls:
+                        new_urls = current_urls + [website_url]
+                        
+                        try:
+                            # Attempt to load data with new URLs
+                            st.session_state.documents = load_web_data(new_urls)
+                            st.session_state.index = create_vector_store(st.session_state.documents)
+                            st.success("URL added successfully!", icon=":material/success:")
+                        except Exception as e:
+                            st.error(f"Error loading website.", icon=":material/error:")
+        
+                    else:
+                        st.warning("This URL is already in the knowledge base.", icon=":material/warning:")
                 else:
-                    st.warning("This URL is already in the knowledge base")
-            # Case 2: URL is not valid
-            else:
-                st.error("Invalid URL. Please enter a valid website link.")
+                    st.error("Invalid URL. Please enter a valid website link.", icon=":material/error:")
 
-        st.write("") # Empty padding
+            st.write("") # Empty padding
 
-        # Add Data (Document)
-        uploaded_file = st.file_uploader("Document", type=["pdf", "docx"], disabled=True)
+            # Add Data (Document)
+            uploaded_file = st.file_uploader("Document", type=["pdf", "docx"], disabled=True)
 
-    # Data Source
-    with col2:
-        st.subheader(":material/database: Knowledge Base")
-        # Get URLs directly from index
-        index_urls = get_urls_from_index(st.session_state.index)
-        
-        # Create DataFrame from index data
-        vector_store_df = pd.DataFrame({
-            "Type": ["Website"] * len(index_urls),
-            "Source": index_urls
-        })
-
-        # Display the DataFrame
-        st.dataframe(vector_store_df, hide_index=True, use_container_width=True)
-
-with st.container(height=515, border=False):
-    col1, col2 = st.columns(2)
-    # Chatbox
-    with col1:
-        st.subheader(":material/forum: Chat")
-        # Create a placeholder container that holds all the messages
-        messages_placeholder = st.container(height=393, border=False)
-        
-        # Display chat messages from history on app rerun
-        with messages_placeholder:
-            for message in st.session_state.messages:
-                with st.chat_message(message.role):
-                    st.markdown(message.content)
-
-        # User Chat Input
-        if user_message := st.chat_input("Type your message here..."):
-            # Display user message in Chat Display
-            with messages_placeholder:
-                with st.chat_message("user"):
-                    st.markdown(user_message)
-
-            # Generate AI response
-            assistant_response, sources = chat_response(user_message, st.session_state.messages, st.session_state.index)
-
-            # Append "user" message to chat history
-            st.session_state.messages.append(ChatMessage(role="user", content=user_message))
-
-            # Append "assistant" message to chat history
-            st.session_state.messages.append(ChatMessage(role="assistant", content=assistant_response))
+        # Data Source
+        with col2:
+            st.subheader(":material/database: Knowledge Base")
+            # Get URLs directly from index
+            index_urls = get_urls_from_index(st.session_state.index)
             
-            # Store sources in session state for display in Sources section
-            st.session_state.sources = sources
+            # Create DataFrame from index data
+            vector_store_df = pd.DataFrame({
+                "Type": ["Website"] * len(index_urls),
+                "Source": index_urls
+            })
 
-            # Display assistant message in Chat Display
+            # Display the DataFrame
+            st.dataframe(vector_store_df, hide_index=True, use_container_width=True)
+knowledge_base_layout()
+
+@st.fragment
+def chat_layout():
+    """
+    Fragmented UI component for Chat
+    """
+    with st.container(height=515, border=False):
+        col1, col2 = st.columns(2)
+        # Chatbox
+        with col1:
+            st.subheader(":material/forum: Chat")
+            # Create a placeholder container that holds all the messages
+            messages_placeholder = st.container(height=393, border=False)
+            
+            # Display chat messages from history on app rerun
             with messages_placeholder:
-                with st.chat_message("assistant"):
-                    st.markdown(assistant_response)
+                for message in st.session_state.messages:
+                    with st.chat_message(message.role):
+                        st.markdown(message.content)
 
-    # Document Sources Table
-    with col2:
-        st.subheader(":material/fact_check: Relevant Sources")
-        # Display the sources if available
-        if 'sources' in st.session_state:
-            if len(st.session_state.sources) == 0:
-                st.warning("No relevant documents or websites found in knowledge base.", icon=":material/warning:")
+            # User Chat Input
+            if user_message := st.chat_input("Type your message here..."):
+                # Display user message in Chat Display
+                with messages_placeholder:
+                    with st.chat_message("user"):
+                        st.markdown(user_message)
+
+                # Generate AI response
+                assistant_response, sources = chat_response(user_message, st.session_state.messages, st.session_state.index)
+
+                # Append "user" message to chat history
+                st.session_state.messages.append(ChatMessage(role="user", content=user_message))
+
+                # Append "assistant" message to chat history
+                st.session_state.messages.append(ChatMessage(role="assistant", content=assistant_response))
+                
+                # Store sources in session state for display in Sources section
+                st.session_state.sources = sources
+
+                # Display assistant message in Chat Display
+                with messages_placeholder:
+                    with st.chat_message("assistant"):
+                        st.markdown(assistant_response)
+
+        # Document Sources Table
+        with col2:
+            st.subheader(":material/fact_check: Relevant Sources")
+            # Display the sources if available
+            if 'sources' in st.session_state:
+                if len(st.session_state.sources) == 0:
+                    st.warning("No relevant documents or websites found in knowledge base.", icon=":material/warning:")
+                else:
+                    # Create a DataFrame from the sources dict object
+                    sources_df = pd.DataFrame(st.session_state.sources)
+                    sources_df = sources_df.rename(columns={
+                        'score': 'Relevance',
+                        'source': 'Source',
+                        'text': 'Text'
+                    })
+                    # Display DataFrame
+                    st.dataframe(sources_df, hide_index=True, use_container_width=True)
             else:
-                # Create a DataFrame from the sources dict object
-                sources_df = pd.DataFrame(st.session_state.sources)
-                sources_df = sources_df.rename(columns={
-                    'score': 'Relevance',
-                    'source': 'Source',
-                    'text': 'Text'
-                })
-                # Display DataFrame
-                st.dataframe(sources_df, hide_index=True, use_container_width=True)
-        else:
-            st.info("Relevant documents or websites from the knowledge base will appear here once you start asking questions.", icon=":material/info:")
+                st.info("Relevant documents or websites from the knowledge base will appear here once you start asking questions.", icon=":material/info:")
+chat_layout()
 
 # ==========================================================
 # Section: CSS Footer
