@@ -62,6 +62,7 @@ def create_vector_store(documents):
 def query_vector_store(index, query):
     """
     Perform similarity search in vector store to find and retrieve top-k relevant text chunks
+    Returns results with source information (URL for web pages, filename for documents)
     """
     # Configure retriever
     retriever = VectorIndexRetriever(
@@ -81,9 +82,16 @@ def query_vector_store(index, query):
     # Format the output into a dictionary
     output = []
     for doc in documents:
-        # Extract source URL from node relationships
-        source_relation = doc.node.relationships.get(NodeRelationship.SOURCE)
-        source = source_relation.node_id if source_relation else "N/A"
+        source = "N/A"
+        
+        # Case 1: Node is a document (PDF/DOCX files)
+        if 'file_name' in doc.node.metadata:
+            source = doc.node.metadata['file_name']
+        # Case 2: Node is a web page HTML
+        else:
+            source_relation = doc.node.relationships.get(NodeRelationship.SOURCE)
+            if source_relation and source_relation.node_id:
+                source = source_relation.node_id
         
         output.append({
             'score': doc.score,

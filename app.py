@@ -8,6 +8,7 @@ import io
 from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.core.schema import NodeRelationship
 import re
+import tempfile
 from vector_search import *
 
 # ==========================================================
@@ -159,17 +160,60 @@ def is_valid_url(url):
     )
     return re.match(regex, url) is not None
 
+def get_all_sources_from_index(index):
+    """
+    Get unified list of all sources (websites and documents) from index
+    Returns list of dicts with 'Type' and 'Source' keys
+    """
+    sources = []
+    for node_id in index.docstore.docs.keys():
+        node = index.docstore.get_node(node_id)
+        
+        # Check for document first
+        if 'file_name' in node.metadata:
+            sources.append({
+                'Type': 'Document',
+                'Source': node.metadata['file_name']
+            })
+        # Then check for website URL
+        else:
+            source_relation = node.relationships.get(NodeRelationship.SOURCE)
+            if source_relation and source_relation.node_id:
+                sources.append({
+                    'Type': 'Website',
+                    'Source': source_relation.node_id
+                })
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    return [x for x in sources if not (x['Source'] in seen or seen.add(x['Source']))]
+
 def get_urls_from_index(index):
     """
-    Helper function to extract unique source URLs from vector store index
+    Get unique website URLs from index (ONLY web sources)
     """
     urls = set()
     for node_id in index.docstore.docs.keys():
         node = index.docstore.get_node(node_id)
-        source_relation = node.relationships.get(NodeRelationship.SOURCE)
-        if source_relation and source_relation.node_id:
-            urls.add(source_relation.node_id)
+        
+        # Only consider nodes that DON'T have document metadata
+        if 'file_name' not in node.metadata:
+            source_relation = node.relationships.get(NodeRelationship.SOURCE)
+            if source_relation and source_relation.node_id:
+                urls.add(source_relation.node_id)
     return sorted(urls)
+
+def get_file_names_from_index(index):
+    """
+    Get unique document filenames from index (ONLY document sources)
+    """
+    file_names = set()
+    for node_id in index.docstore.docs.keys():
+        node = index.docstore.get_node(node_id)
+        # Only consider nodes with document metadata
+        if 'file_name' in node.metadata:
+            file_names.add(node.metadata['file_name'])
+    return sorted(file_names)
 
 def clear_url_input():
     """
@@ -180,7 +224,7 @@ def clear_url_input():
     # Clear the text input widget
     st.session_state.website_input = ""
 
-# Define default URLs in session state
+# Initialize default URLs to be added to vector store
 if "index" not in st.session_state:
     default_urls = [
         "https://www.apple.com/newsroom/2024/02/apple-reports-first-quarter-results/",
@@ -198,18 +242,21 @@ if "messages" not in st.session_state:
     initial_message = "Hi! I'm your AI assistant, ready to help answer your questions using the resources you've added to the knowledge base. Ask me anything, and I'll provide accurate, relevant answers based on the information available!"
     st.session_state.messages.append(ChatMessage(role="assistant", content=initial_message))
 
-# Initialize website url input
-    if 'submitted_url' not in st.session_state:
-        st.session_state.submitted_url = None
-    if 'website_input' not in st.session_state:
-        st.session_state.website_input = ""
+# Initialize submitted url
+if 'submitted_url' not in st.session_state:
+    st.session_state.submitted_url = None
+
+# Initialize website input
+if 'website_input' not in st.session_state:
+    st.session_state.website_input = ""
 
 @st.fragment()
 def knowledge_base_layout():
     """
     Fragmented UI component for Knowledge Base
     """
-    st.write("") # Empty padding
+    st.write("")  # Empty padding
+    # Knowledge Base
     with st.expander(":material/database: Knowledge Base", expanded=True):
         col1, col2 = st.columns(2)
 
@@ -217,7 +264,7 @@ def knowledge_base_layout():
         with col1:
             st.subheader(":material/library_add: Add Data")
 
-            # Add Data (Website URL)
+            # Website URL Input
             st.text_input(
                 label="Website URL",
                 placeholder="Type a website URL and then press enter (e.g. https://website.com)",
@@ -225,50 +272,95 @@ def knowledge_base_layout():
                 on_change=clear_url_input
             )
 
-            # Process submitted URL if exists
+            # Process submitted URL
             if st.session_state.submitted_url:
                 website_url = st.session_state.submitted_url
-                # Reset submitted URL immediately to prevent reprocessing
-                st.session_state.submitted_url = None
+                st.session_state.submitted_url = None  # Reset immediately after retrieval
 
-                # Original validation and processing logic
+                # Check if URL is valid using regex
                 if is_valid_url(website_url):
+                    # Get EXISTING website URLs only
                     current_urls = get_urls_from_index(st.session_state.index)
+                    # Check if URL already exists
                     if website_url not in current_urls:
-                        new_urls = current_urls + [website_url]
-                        
                         try:
-                            # Attempt to load data with new URLs
-                            st.session_state.documents = load_web_data(new_urls)
-                            st.session_state.index = create_vector_store(st.session_state.documents)
-                            st.success("URL added successfully!", icon=":material/success:")
+                            # Load ONLY the new URL (not reloading existing ones)
+                            new_web_docs = load_web_data([website_url])
+                            
+                            # Merge with existing documents
+                            updated_documents = st.session_state.documents + new_web_docs
+                            
+                            # Update session state
+                            st.session_state.documents = updated_documents
+                            st.session_state.index = create_vector_store(updated_documents)
+                            
+                            st.success("Added 1 URL to the knowledge base.", icon=":material/task_alt:")
                         except Exception as e:
-                            st.error(f"Error loading website.", icon=":material/error:")
-        
+                            st.error(f"Error loading website. {e}", icon=":material/error:")
                     else:
-                        st.warning("This URL is already in the knowledge base.", icon=":material/warning:")
+                        st.warning("URL already exists in the knowledge base.", icon=":material/warning:")
                 else:
                     st.error("Invalid URL. Please enter a valid website link.", icon=":material/error:")
 
-            st.write("") # Empty padding
+            st.write("")  # Empty padding
 
-            # Add Data (Document)
-            uploaded_file = st.file_uploader("Document", type=["pdf", "docx"], disabled=True)
+            # Document Uploader
+            with st.form("my-form", clear_on_submit=True, border=False):
+                uploaded_files = st.file_uploader(
+                    "Document", 
+                    type=["pdf", "docx"],
+                    accept_multiple_files=True
+                )
+                submitted = st.form_submit_button(":material/upload: Upload files")
 
-        # Data Source
+            # Process uploaded document
+            if submitted and len(uploaded_files) > 0:
+                try:
+                    # Get existing DOCUMENT sources only
+                    existing_files = get_file_names_from_index(st.session_state.index)
+                    
+                    # Filter new files
+                    new_files = [f for f in uploaded_files if f.name not in existing_files]
+                    
+                    # Check if file already exists
+                    if new_files:
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            # Save and process new files
+                            saved_paths = []
+                            for file in new_files:
+                                file_path = os.path.join(temp_dir, file.name)
+                                with open(file_path, "wb") as f:
+                                    f.write(file.getvalue())
+                                saved_paths.append(file_path)
+                            
+                            # Load new documents
+                            new_docs = load_document_data(temp_dir)
+                            
+                            # Update state
+                            updated_documents = st.session_state.documents + new_docs
+                            st.session_state.documents = updated_documents
+                            st.session_state.index = create_vector_store(updated_documents)
+                            
+                            st.success(f"Added {len(new_files)} file(s) to the knowledge base.", icon=":material/task_alt:")
+                    else:
+                        st.warning("Files already exist in knowledge base.", icon=":material/warning:")
+                except Exception as e:
+                    st.error(f"Error processing files. {str(e)}", icon=":material/error:")
+
+        # Data Source Display
         with col2:
             st.subheader(":material/database: Knowledge Base")
-            # Get URLs directly from index
-            index_urls = get_urls_from_index(st.session_state.index)
             
-            # Create DataFrame from index data
-            vector_store_df = pd.DataFrame({
-                "Type": ["Website"] * len(index_urls),
-                "Source": index_urls
-            })
-
-            # Display the DataFrame
-            st.dataframe(vector_store_df, hide_index=True, use_container_width=True)
+            # Get properly separated sources
+            sources = get_all_sources_from_index(st.session_state.index)
+            vector_store_df = pd.DataFrame(sources)
+            
+            # Display sources in vector store
+            st.dataframe(
+                vector_store_df,
+                hide_index=True,
+                use_container_width=True
+            )
 knowledge_base_layout()
 
 @st.fragment
